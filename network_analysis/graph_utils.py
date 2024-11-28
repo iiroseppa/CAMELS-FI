@@ -263,6 +263,8 @@ def merge_short_segments(nodes, max_seg_length):
     
     too_short = nodes[nodes.pituus_m < max_seg_length / 2]
     
+    deleted = []
+    
     for j, row in too_short.iterrows():
         
         previous_nodes = nodes[nodes['next'] == row.id]
@@ -289,7 +291,7 @@ def merge_short_segments(nodes, max_seg_length):
         # Comparing lengths
         if has_previous:
             if has_following:
-                # Dams are not removed
+                # Dams are not removed, this directs to a branch that handles it
                 if row.dam:
                     previous_is_shorter = False
                 previous_is_shorter = previous_l - next_l
@@ -298,22 +300,47 @@ def merge_short_segments(nodes, max_seg_length):
         else:
             previous_is_shorter = False
     
-        # Join happens by deleting the short node and adding it's length to upstream node(s). Skip connections are made
-        if previous_is_shorter: 
+       
+        if previous_is_shorter:
+            """
+            There is a chance that already removed node appears again, if a intersection node was deleted. 
+            This can be ignored, because the node was updated previously
+            """
+            if j in deleted:
+                continue
+
+            # Pour point is never deleted
+            if nodes.at[j, 'pour']:
+                continue
+            
+            # Join happens by deleting the short node and adding it's length to upstream node(s). Skip connections are made
             # nodes that lead to the will-be-removed node
             for i, _ in previous_nodes.iterrows():
                 nodes.loc[i, 'pituus_m'] = nodes.loc[i, 'pituus_m'] + nodes.at[nodes.at[i, 'next'] , 'pituus_m']
                 nodes.loc[i, 'next'] = nodes.loc[nodes.at[i, 'next'] , 'next']
-            
+
             nodes = nodes.drop(j)
+            deleted.append(j)
         # if the upstream is shorter, If there are multiple upstream nodes, use the minimum length
         # also enter this branch if next node is the pour, because that shall not be deleted
             #the join happens by deleting the short node and adding it's length to upstream node(s)
         
         # the join happens by deleting the downstream node and adding it's length to the current node
         else: 
-            if nodes.at[row.next, 'dam']: # Dams are not removed
-                print(f"Node {row.next} is a dam, so it was not removed")
+            """
+            There is a chance that already removed node appears again, if a intersection node was deleted. 
+            This can be ignored, because the node was updated previously
+            """
+            
+            if row.next in deleted:
+                continue
+                
+            # Pour point is never deleted
+            if nodes.at[row.next, 'pour']:
+                continue
+                
+            if nodes.loc[row.next, 'dam']: # Dams are not removed
+                #print(f"Node {row.next} is a dam, so it was not removed")
                 continue
             updated_nodes = nodes[nodes['next'] == row.next]
             
@@ -321,7 +348,8 @@ def merge_short_segments(nodes, max_seg_length):
                 nodes.at[i, 'pituus_m'] = nodes.at[i, 'pituus_m'] + nodes.at[row.next, 'pituus_m']
                 nodes.at[i, 'next'] = nodes.at[nodes.at[i, 'next'] , 'next']
                 
-            nodes= nodes.drop(row.next)
+            nodes = nodes.drop(row.next)
+            deleted.append(row.next)
     return nodes
 
 def traverse_graph(nodes, pour_id):
