@@ -109,7 +109,7 @@ def check_node_network_topology(nodes):
     result['all_reachable'] = len(traverse_graph(nodes, pour_id)) == len(nodes)
     return result
 
-def correct_dam_slivers(nodes, max_removal_length=100):
+def correct_dam_slivers(nodes, max_removal_length=10):
     """
     Corrects the dam nodes in a network by merging consecutive dam nodes with
     and updating the lengths of the previous node.
@@ -294,7 +294,9 @@ def merge_short_segments(nodes, max_seg_length):
                 # Dams are not removed, this directs to a branch that handles it
                 if row.dam:
                     previous_is_shorter = False
-                previous_is_shorter = previous_l - next_l
+                
+                else: 
+                    previous_is_shorter = previous_l < next_l
             else:
                 previous_is_shorter = True
         else:
@@ -312,6 +314,8 @@ def merge_short_segments(nodes, max_seg_length):
             # Pour point is never deleted
             if nodes.at[j, 'pour']:
                 continue
+
+            
             
             # Join happens by deleting the short node and adding it's length to upstream node(s). Skip connections are made
             # nodes that lead to the will-be-removed node
