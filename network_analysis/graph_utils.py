@@ -2,8 +2,9 @@ import pandas as pd
 import geopandas as geopd
 import numpy as np
 
-from shapely import Point
-
+import shapely
+from shapely import Point, LineString
+from shapely.ops import split, snap
 
     
 def add_connections(nodes, pour, tolerance=5):
@@ -243,7 +244,7 @@ def in_connectedness(nodes):
     
     search_buffer  = list(nodes[nodes.next == pour_idx].id)
 
-    nodes.at[pour_idx, 'in_connectedness'] = len(search_buffer)
+    nodes.at[pour_idx, 'in_connect'] = len(search_buffer)
 
     search_buffer.remove(pour_idx)
 
@@ -253,10 +254,10 @@ def in_connectedness(nodes):
         for i in search_buffer:
             incoming_nodes = list(nodes[nodes.next==i].id)
             new_search_buffer += incoming_nodes
-            nodes.at[i, 'in_connectedness'] = len(incoming_nodes)
+            nodes.at[i, 'in_connect'] = len(incoming_nodes)
             
         search_buffer = new_search_buffer
-    nodes['in_connectedness'] = nodes['in_connectedness'].astype(int)
+    nodes['in_connect'] = nodes['in_connect'].astype(int)
     return nodes
 
 def is_loopy(nodes, pour_id):
