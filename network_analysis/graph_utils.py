@@ -126,13 +126,42 @@ def correct_dam_slivers(nodes, max_removal_length=10):
     dam_to_dam = dams[dams['next'].isin(dams['id'])]
     # only nodes that are too short are removed
     dam_to_dam = dam_to_dam[dam_to_dam["pituus_m"] < max_removal_length]
-    nodes_to_removal = nodes[nodes['next'].isin(dam_to_dam['id'])]
-    
+    nodes_before_removal = nodes[nodes['next'].isin(dam_to_dam['id'])]
 
-    for i, row in nodes_to_removal.iterrows():
+    # test if there are dams slivers connected to each other 
+    has_multi_sliver_connections = len(dam_to_dam[dam_to_dam['next'].isin(dam_to_dam['id'])]) > 0
+
+    if has_multi_sliver_connections:
+        first_sliver_nodes = dam_to_dam[dam_to_dam['next'].isin(dam_to_dam['id'])]
+        # There are more than two slivers in a row
+        if len(first_sliver_nodes) > 1:
+            raise NotImplementedError
+            # Add code to handle case with multiple (>= 3) consecutive slivers
+        else: # two slivers
+            first_sliver_id = first_sliver_nodes.iloc[0].id
+            last_sliver_id = dam_to_dam.at[first_sliver_id, 'next']
+            length_sum = first_sliver_nodes.pituus_m.sum() + nodes.at[last_sliver_id, 'pituus_m']
+           
+            src_node_ids = list(nodes[nodes['next'] == first_sliver_id].id)
+            dst_node_id = nodes.at[last_sliver_id, 'next']
+            nodes.loc[src_node_ids, 'pituus_m'] += length_sum
+            nodes.loc[src_node_ids, 'next'] = dst_node_id
+            # delete the sliver nodes that have been gone trough
+            nodes = nodes.drop([first_sliver_id, last_sliver_id])
+    
+    # Done again to start removing from a clean slate
+    dams = nodes[nodes['dam']]
+    dam_to_dam = dams[dams['next'].isin(dams['id'])]
+    # only nodes that are too short are removed
+    dam_to_dam = dam_to_dam[dam_to_dam["pituus_m"] < max_removal_length]
+    nodes_before_removal = nodes[nodes['next'].isin(dam_to_dam['id'])]      
+        
+    
+    for i, row in nodes_before_removal.iterrows():
+        
         nodes.loc[i, 'pituus_m'] = nodes.loc[i, 'pituus_m'] + nodes.at[nodes.at[i, 'next'] , 'pituus_m']
         nodes.loc[i, 'next'] = nodes.loc[nodes.at[i, 'next'] , 'next']
-        
+    
     nodes = nodes.drop(dam_to_dam.index)
     return nodes
 
