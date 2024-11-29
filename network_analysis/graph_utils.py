@@ -165,6 +165,25 @@ def correct_dam_slivers(nodes, max_removal_length=10):
     nodes = nodes.drop(dam_to_dam.index)
     return nodes
 
+def drop_z_coordinates(line):
+    """
+    Removes the z-coordinates from a shapely LineString.
+
+    Parameters:
+        line (LineString): A shapely LineString with z-coordinates.
+    
+    Returns:
+        LineString: A new LineString with only x and y coordinates.
+    """
+    if not isinstance(line, LineString):
+        raise ValueError("Input must be a shapely LineString.")
+
+    # Extract only x and y coordinates from the LineString
+    xy_coords = [(x, y) for x, y, z in line.coords]
+    
+    # Return a new 2D LineString
+    return LineString(xy_coords)
+
 def get_pour(nodes, tolerance=5):
     """ Fetches the pour point(s) from a river network node representation
     """
@@ -384,6 +403,113 @@ def merge_short_segments(nodes, max_seg_length):
             nodes = nodes.drop(row.next)
             deleted.append(row.next)
     return nodes
+
+def slice_linestrings(base_gdf, cutter_gdf):
+    """
+    Slices the LineString geometries in base_gdf at the intersection points with the geometries in cutter_gdf.
+    
+    Parameters:
+        base_gdf (geopd.GeoDataFrame): GeoDataFrame containing LineString geometries to be sliced.
+        cutter_gdf (geopd.GeoDataFrame): GeoDataFrame containing geometries used for slicing.
+    
+    Returns:
+        geopd.GeoDataFrame: A new GeoDataFrame containing the sliced LineString segments.
+    
+    Created with chatgpt, then modified from that, prompt:
+    Help me create a function in python that slices a geodataframe that has LineString geometry into segments,
+    given another geodataframe that has LineString geometry.
+    The first geodataframe should be sliced at the intersection points of the two geodataframes
+
+    """
+    # If there is nothing to cut, we can return immediatly
+    if len(cutter_gdf) == 0:
+        return base_gdf
+
+    sliced_segments = []
+    
+    # Ensure both GeoDataFrames are in the same CRS
+    if base_gdf.crs != cutter_gdf.crs:
+        cutter_gdf = cutter_gdf.to_crs(base_gdf.crs)
+
+    
+    cutter = cutter_gdf['geometry'].union_all()
+    for line in base_gdf.geometry:
+        #if not isinstance(line, LineString) or not isinstance(line, MultiLineString):
+            #raise ValueError("All geometries in base_gdf must be LineStrings.")
+    
+        splitted = split(line, cutter)
+        split_result = list(splitted.geoms)
+                
+        sliced_segments.extend(split_result)
+        
+    # Create a GeoSeries from the sliced segments
+    sliced = geopd.GeoDataFrame({"geometry":sliced_segments}, geometry="geometry", crs=base_gdf.crs)
+
+    sliced = sliced.drop_duplicates('geometry')
+    return sliced
+
+def subdivide_lines(lines, max_seg_length):
+    """ Takes in a dataframe and divides it to segments,
+    where most of the segments are usually less than the max_seg_length
+    Segments at the end of lines can be slightly longer, because is the last point is alone, it is appended to the last segment
+    """
+    lines['pituus_m'] = lines['geometry'].length
+    
+    too_big = []
+    small_enough = []
+    for i, row in lines.iterrows():
+        
+        if row.pituus_m < max_seg_length:
+            small_enough.append(i)
+            continue
+    
+        too_big.append(i)
+    
+    too_big_sections = lines.loc[too_big, :]
+    subdivided_branches = lines.loc[small_enough, :]
+    #subdivided_branches = lines.loc[~lines.index.isin(too_big_sections.index)].reset_index(drop=True)
+    too_big_sections = too_big_sections.reset_index(drop=True)
+    
+    
+    
+    for i, row in too_big_sections.iterrows():
+        # changing the row to df so it can be appended later to the subdivided branches
+        row_base = geopd.GeoDataFrame(
+            dict(zip(list(row.index), list(row.values))),
+            crs=too_big_sections.crs, geometry='geometry', index=[0]) 
+        line_string = row.geometry
+        coords = list(line_string.coords)
+        points = [Point(coord) for coord in coords]
+        section_points = []
+        distance_sum = 0
+        segments = []
+        # loop iterates trough all but the last point, which is added at the end anyway.
+        start_points = points[:-1]
+        for j, point in enumerate(start_points):
+            distance_sum += shapely.distance(point, points[j + 1])
+            section_points.append(point)
+            if distance_sum >= max_seg_length:
+                segments.append(LineString(section_points))
+                # TODO test if this works
+                section_points = [point]
+                distance_sum = 0
+                
+    
+        section_points.append(points[-1])
+        #if len(section_points) > 1: 
+        segments.append(LineString(section_points))
+        # if the last point is alone, it is appended to the last segment
+        #else:
+            #segments[-1] = append_to_linestring(segments[-1], section_points[0])
+            
+        for segment in segments:
+            row_base.at[0, 'geometry'] = segment
+            subdivided_branches = pd.concat([subdivided_branches, row_base])
+    
+    # Segment length needs to be  recalculated
+    subdivided_branches['pituus_m'] = subdivided_branches['geometry'].length
+    subdivided_branches = subdivided_branches.reset_index(drop=True)
+    return subdivided_branches
 
 def traverse_graph(nodes, pour_id):
     """ Traverses trough connections of a graph and 
