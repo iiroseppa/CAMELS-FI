@@ -231,8 +231,6 @@ def get_start_and_end_nodes(lines):
     #nodes = add_connections(nodes)
     return nodes
 
-
-
 def in_connectedness(nodes):
     """ Calculates in-connectedness of each node for a given dataframe, and adds it as a new column
     
@@ -240,25 +238,28 @@ def in_connectedness(nodes):
     nodes = nodes.copy()
     queue = nodes.copy()
     
-    pour_idx = nodes.index[nodes.pour][0]
-    
-    search_buffer  = list(nodes[nodes.next == pour_idx].id)
+    pour_id = nodes[nodes.pour].iloc[0].id
+    pour_idx = nodes[nodes.pour].index[0]
+    search_buffer  = list(nodes[nodes.next == pour_id].id)
 
     nodes.at[pour_idx, 'in_connect'] = len(search_buffer)
-
-    search_buffer.remove(pour_idx)
-
+    
+    
+    search_buffer.remove(pour_id)
+    
     while len(search_buffer) > 0:
         
         new_search_buffer = []
         for i in search_buffer:
+            idx = nodes[nodes['id'] == i].index[0]
             incoming_nodes = list(nodes[nodes.next==i].id)
             new_search_buffer += incoming_nodes
-            nodes.at[i, 'in_connect'] = len(incoming_nodes)
+            nodes.at[idx, 'in_connect'] = len(incoming_nodes)
             
         search_buffer = new_search_buffer
     nodes['in_connect'] = nodes['in_connect'].astype(int)
     return nodes
+
 
 def is_loopy(nodes, pour_id):
     """ Traverses trough connections of a graph and 
@@ -416,6 +417,59 @@ def merge_short_segments(nodes, max_seg_length):
                 
             nodes = nodes.drop(row.next)
             deleted.append(row.next)
+    return nodes
+
+def remove_duplicate_geom_nodes(nodes):
+    """ Removes duplicate geometries, ensuring that no important information is lost.
+    If either one of the duplicates is a lake, dam or pour point, the new node has all of the corresponding features.
+    """
+    nodes = nodes.copy()
+    
+    duplicates = nodes[nodes.geometry.duplicated(keep=False)]
+    
+    if len(duplicates) == 0:
+        return nodes
+    # Grouping by geometry results in pairs that share the geometry
+    grouped = duplicates.groupby("geometry") 
+    
+    for point, group in grouped:
+        if len(group) > 2:
+            raise NotImplementedError("currently the function only supports pairs of duplicates")
+        # Getting the important values. True = 1, False = 0 when summing. 
+        dam = group['dam'].sum() > 0
+        pour = group['pour'].sum() > 0
+        lake = group['lake'].sum() > 0
+
+        
+        # getting the id of the first node of the duplicate cluster
+        all_previous = nodes[nodes['next'].isin(group.id)]
+        #previous = all_previous[~all_previous['id'].isin(group.id)]
+        #previous_ids = list(previous.id)
+        upstream_node = all_previous[all_previous['id'].isin(group.id)]
+        #  TODO this might cause bugs if the length of group > 2
+        upstream_idx = upstream_node.index[0]
+
+        all_following = nodes[nodes['id'].isin(group.next)]
+        following_id = all_following[~all_following['id'].isin(group.id)].iloc[0].id
+        downstream_node = all_following[all_following['id'].isin(group.id)]
+        
+        # Updating the new information to upstream node
+        nodes.at[upstream_idx, 'pour'] = pour
+        nodes.at[upstream_idx, 'dam'] = dam
+        nodes.at[upstream_idx, 'lake'] = lake
+        if not pour:
+            nodes.at[upstream_idx, 'pituus_m'] += downstream_node.iloc[0].pituus_m
+        # Pour point is self looping, so it needs to be handled
+        if pour:
+            nodes.at[upstream_idx, 'next'] = upstream_idx
+        else:
+            nodes.at[upstream_idx, 'next'] = downstream_node.iloc[0].next
+        
+        # Deleting the downstream
+        nodes = nodes.drop(downstream_node.index[0])
+
+    # The inconnectedness needs to be recalculated
+    nodes = in_connectedness(nodes)    
     return nodes
 
 def slice_linestrings(base_gdf, cutter_gdf):
