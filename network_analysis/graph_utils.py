@@ -335,17 +335,28 @@ def merge_short_segments(nodes, max_seg_length):
             has_following = False
         else:
             has_following = True
-    
+
+        #print(has_following, has_previous)
         
         # Comparing lengths
         if has_previous:
             if has_following:
+                
                 # Dams are not removed, this directs to a branch that handles it
                 if row.dam:
                     previous_is_shorter = False
                 
+                # If the following is pour, it cannot be deleted. However, in that case short segment might be merged with upstream
+                elif nodes.at[row.next, 'pour']:
+                    previous_is_shorter = True
+
+                elif nodes.at[row.next, 'dam']:
+                    previous_is_shorter = True
+                
                 else: 
                     previous_is_shorter = previous_l < next_l
+
+                
             else:
                 previous_is_shorter = True
         else:
@@ -357,14 +368,13 @@ def merge_short_segments(nodes, max_seg_length):
             There is a chance that already removed node appears again, if a intersection node was deleted. 
             This can be ignored, because the node was updated previously
             """
+            
             if j in deleted:
                 continue
 
             # Pour point is never deleted
             if nodes.at[j, 'pour']:
                 continue
-
-            
             
             # Join happens by deleting the short node and adding it's length to upstream node(s). Skip connections are made
             # nodes that lead to the will-be-removed node
@@ -387,7 +397,7 @@ def merge_short_segments(nodes, max_seg_length):
             
             if row.next in deleted:
                 continue
-                
+            
             # Pour point is never deleted
             if nodes.at[row.next, 'pour']:
                 continue
@@ -395,6 +405,9 @@ def merge_short_segments(nodes, max_seg_length):
             if nodes.loc[row.next, 'dam']: # Dams are not removed
                 #print(f"Node {row.next} is a dam, so it was not removed")
                 continue
+
+            
+            
             updated_nodes = nodes[nodes['next'] == row.next]
             
             for i, _ in updated_nodes.iterrows():
