@@ -433,6 +433,7 @@ def remove_duplicate_geom_nodes(nodes):
     grouped = duplicates.groupby("geometry") 
     
     for point, group in grouped:
+        
         if len(group) > 2:
             raise NotImplementedError("currently the function only supports pairs of duplicates")
         # Getting the important values. True = 1, False = 0 when summing. 
@@ -440,33 +441,55 @@ def remove_duplicate_geom_nodes(nodes):
         pour = group['pour'].sum() > 0
         lake = group['lake'].sum() > 0
 
-        
-        # getting the id of the first node of the duplicate cluster
-        all_previous = nodes[nodes['next'].isin(group.id)]
-        #previous = all_previous[~all_previous['id'].isin(group.id)]
-        #previous_ids = list(previous.id)
-        upstream_node = all_previous[all_previous['id'].isin(group.id)]
-        #  TODO this might cause bugs if the length of group > 2
-        upstream_idx = upstream_node.index[0]
+        # If the snapped nodes are not one after another, but rather lead to the same node
+        if group.iloc[0].next == group.iloc[1].next:
+            all_previous = nodes[nodes['next'].isin(group.id)]
+            all_previous_ids = list(all_previous.id)
 
-        all_following = nodes[nodes['id'].isin(group.next)]
-        following_id = all_following[~all_following['id'].isin(group.id)].iloc[0].id
-        downstream_node = all_following[all_following['id'].isin(group.id)]
-        
-        # Updating the new information to upstream node
-        nodes.at[upstream_idx, 'pour'] = pour
-        nodes.at[upstream_idx, 'dam'] = dam
-        nodes.at[upstream_idx, 'lake'] = lake
-        if not pour:
-            nodes.at[upstream_idx, 'pituus_m'] += downstream_node.iloc[0].pituus_m
-        # Pour point is self looping, so it needs to be handled
-        if pour:
-            nodes.at[upstream_idx, 'next'] = upstream_idx
-        else:
-            nodes.at[upstream_idx, 'next'] = downstream_node.iloc[0].next
-        
-        # Deleting the downstream
-        nodes = nodes.drop(downstream_node.index[0])
+            remaining_idx = group.index[0]
+
+            # Setting the connections to the previous
+            nodes.loc[all_previous.index, 'next'] = group.at[remaining_idx, 'id']
+
+            nodes.at[remaining_idx, 'pour'] = pour
+            nodes.at[remaining_idx, 'dam'] = dam
+            nodes.at[remaining_idx, 'lake'] = lake
+            
+            # Pour point is self looping, so it needs to be handled
+            if pour:
+                nodes.at[remaining_idx, 'next'] = remaining_idx
+            
+            nodes.at[remaining_idx, 'pituus_m'] = group.pituus_m.mean(skipna=False)
+            nodes = nodes.drop(group.index[1])
+            
+        else: # The nodes are in sequence
+            # getting the id of the first node of the duplicate cluster
+            all_previous = nodes[nodes['next'].isin(group.id)]
+            #previous = all_previous[~all_previous['id'].isin(group.id)]
+            #previous_ids = list(previous.id)
+            upstream_node = all_previous[all_previous['id'].isin(group.id)]
+            #  TODO this might cause bugs if the length of group > 2
+            
+            remaining_idx = upstream_node.index[0]
+    
+            all_following = nodes[nodes['id'].isin(group.next)]
+            following_id = all_following[~all_following['id'].isin(group.id)].iloc[0].id
+            downstream_node = all_following[all_following['id'].isin(group.id)]
+            
+            # Updating the new information to upstream node
+            nodes.at[remaining_idx, 'pour'] = pour
+            nodes.at[remaining_idx, 'dam'] = dam
+            nodes.at[remaining_idx, 'lake'] = lake
+            if not pour:
+                nodes.at[remaining_idx, 'pituus_m'] += downstream_node.iloc[0].pituus_m
+            # Pour point is self looping, so it needs to be handled
+            if pour:
+                nodes.at[remaining_idx, 'next'] = remaining_idx
+            else:
+                nodes.at[remaining_idx, 'next'] = downstream_node.iloc[0].next
+            
+            # Deleting the downstream
+            nodes = nodes.drop(downstream_node.index[0])
 
     # The inconnectedness needs to be recalculated
     nodes = in_connectedness(nodes)    
