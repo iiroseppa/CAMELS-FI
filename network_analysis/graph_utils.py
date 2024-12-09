@@ -166,6 +166,37 @@ def correct_dam_slivers(nodes, max_removal_length=10):
     nodes = nodes.drop(dam_to_dam.index)
     return nodes
 
+def count_downstream_occurences(nodes, column):
+    """
+    Counts the amount of occurences in a column of the nodes, downstream from the node
+    
+    Parameters:
+        nodes(GeoDataFrame): a node representations of the river network
+        column: (name of column of type boolean)
+    """
+    assert nodes[column].dtype == 'bool', "This function only supports boolean columns"
+    
+    flow_paths = get_flow_paths(nodes)
+    counts = {}
+    
+    
+    for flow_path in flow_paths:
+        count = 0
+        for node_id in reversed(flow_path):
+            # is the current node the type of feature we are looking for?
+            if nodes.at[node_id, column]:
+                count += 1
+            
+            # if node is already in the distances-dict, it doesn't need to be reassigned, because bifurcations are not allowed in the network
+            if node_id in counts:
+                continue
+            
+            # Otherwise it is assigned
+            else:
+                counts[node_id] = count
+    nodes[f'ds_{column}_count'] = nodes.index.map(counts)
+    return nodes
+
 def drop_z_coordinates(line):
     """
     Removes the z-coordinates from a shapely LineString.
@@ -352,6 +383,17 @@ def is_loopy(nodes, pour_id):
         duplicates += list(already_visited.id)
         
     return len(duplicates) != 0
+
+def is_source(nodes):
+    """
+    Adds a column to the node network, telling if it is a source or not
+    """
+    if "in_connect" in nodes.columns:
+        pass
+    else:
+        nodes = in_connectedness(nodes)
+    nodes['source'] = nodes["in_connect"] == 0
+    return nodes
 
 def hops_to_pour(nodes):
     """ Calculates number of hops from all nodes to the pour point for the given preprocessed dataframe
@@ -618,6 +660,29 @@ def reset_graph_index(nodes, sort=True):
     result = result.replace({'id': replacement_dict}) 
     
     return result
+
+def shreve(nodes):
+    """ Calculates the shreve river order for the given preprocessed dataframe
+    Input: Preprocessed dataframe
+    Output: Returns same dataframe but with additional column containing the shreve order
+    """
+    if "source" in nodes.columns:
+        pass
+    else:
+        nodes = is_source(nodes)
+
+    flow_paths = get_flow_paths(nodes)
+    
+    shreve = {} 
+    for flow_path in flow_paths:
+        for node_id in flow_path:
+            # The node has already been visited, and thus can just be incremented
+            if node_id in shreve:
+                shreve[node_id] += 1
+            else:
+                shreve[node_id] = 1
+    nodes['shreve'] = nodes.index.map(shreve)
+    return nodes   
 
 def slice_linestrings(base_gdf, cutter_gdf):
     """
