@@ -185,6 +185,30 @@ def drop_z_coordinates(line):
     # Return a new 2D LineString
     return LineString(xy_coords)
 
+def d_to_pour(nodes):
+    """
+    Calculates the distance to the pour point for all nodes based on the pituus_m (distance_m) attribute
+    """
+    flow_paths = get_flow_paths(nodes)
+    
+    distances = {}
+    for flow_path in flow_paths:
+        distance = 0
+        # implementation is simpler if the list is reversed (pour to source)
+        for node_id in reversed(flow_path): 
+            # the pituus_m of current node is added distance
+            distance += nodes.at[node_id, 'pituus_m']
+            # if node is already in the distances-dict, it doesn't need to be reassigned, because bifurcations are not allowed in the network
+            if node_id in distances:
+                continue
+            
+            # Otherwise it is assigned
+            else:
+                distances[node_id] = distance
+    # Setting the values as a new column
+    nodes['d_to_pour'] = nodes.index.map(distances)
+    return nodes
+
 def get_pour(nodes, tolerance=5):
     """ Fetches the pour point(s) from a river network node representation
     """
@@ -197,6 +221,33 @@ def get_pour(nodes, tolerance=5):
     buffered_starts = buffered_starts.reset_index()
     pour = end_nodes.overlay(buffered_starts, keep_geom_type=True, how='difference')
     return pour
+
+def get_flow_paths(nodes):
+    """ Searches trough the route that water follows from all of the source points
+    and returns the ids of all the routes as list of lists of indexes
+    """
+    nodes = nodes.copy()
+    source_ids = get_source_idxs(nodes)
+    paths = []
+    pour_id = nodes[nodes['pour']].iloc[0].id
+    
+    for source in source_ids:
+        path = []
+        current_node = source
+        counter = 0
+        # Pour point is self looping, so execution should be stopped when it is reached
+        while current_node != pour_id:
+            path.append(current_node)
+            current_node = nodes.at[current_node, 'next']
+            
+            counter += 1
+            if counter > 1000:
+                raise AssertionError("loop limit exceeded")
+        # Adding the pour point to the source
+        path.append(current_node)
+        paths.append(path)
+    
+    return paths
 
 def get_start_and_end_nodes(lines):
     """ Gets start and end points from dataframe containing linestrings.
@@ -230,6 +281,17 @@ def get_start_and_end_nodes(lines):
     nodes['id'] = nodes['id'].astype(int)
     #nodes = add_connections(nodes)
     return nodes
+
+def get_source_idxs(nodes):
+
+    if "in_connect" in nodes.columns:
+        pass
+    else:
+        nodes = in_connectedness(nodes)
+    # No incoming connections
+    source = nodes[nodes['in_connect'] == 0]
+    source_ids = list(source.index)
+    return source_ids
 
 def in_connectedness(nodes):
     """ Calculates in-connectedness of each node for a given dataframe, and adds it as a new column
@@ -291,6 +353,41 @@ def is_loopy(nodes, pour_id):
         
     return len(duplicates) != 0
 
+def hops_to_pour(nodes):
+    """ Calculates number of hops from all nodes to the pour point for the given preprocessed dataframe
+    Input: Preprocessed dataframe
+    Output: Returns same dataframe but with additional column containing the distance to pour point in hops
+    """
+    nodes = nodes.copy()
+    pour_idx = nodes.index[nodes.pour][0]
+    distance = 0
+    
+    nodes.at[pour_idx, 'hops_to_pour'] =  distance
+    
+    # Pour point is self looping, so it must be removed before search buffer
+    queue = nodes.copy()
+    queue_idx = list(queue.index)
+    queue_idx.remove(pour_idx)
+    queue = queue.loc[queue_idx]
+    search_buffer = list(queue[queue['next']==pour_idx].id)
+    
+    
+    # Loop until all the nodes have a distance
+    while len(search_buffer) > 0:
+        distance += 1
+        
+        # stuff happens
+        for i in search_buffer:
+            nodes.at[i, 'hops_to_pour'] =  distance
+        
+        new_search_buffer = []
+        for i in search_buffer:
+            new_search_buffer += list(queue[queue['next']==i].id)
+            
+        search_buffer = new_search_buffer
+    #print(nodes[nodes['hops_to_pour'].isna()])
+    nodes['hops_to_pour'] = nodes['hops_to_pour'].astype(int)
+    return nodes
 
 def merge_short_segments(nodes, max_seg_length):
     """
@@ -419,6 +516,7 @@ def merge_short_segments(nodes, max_seg_length):
             deleted.append(row.next)
     return nodes
 
+
 def remove_duplicate_geom_nodes(nodes):
     """ Removes duplicate geometries, ensuring that no important information is lost.
     If either one of the duplicates is a lake, dam or pour point, the new node has all of the corresponding features.
@@ -494,6 +592,32 @@ def remove_duplicate_geom_nodes(nodes):
     # The inconnectedness needs to be recalculated
     nodes = in_connectedness(nodes)    
     return nodes
+
+def reset_graph_index(nodes, sort=True):
+    """
+    TODO: buggy, has to be fixed
+    Resets the index in a way that id and next are preserved. Optionally also reorders the graph based on distance to pour
+    """
+    if 'hops_to_pour' in nodes.columns:
+        diameter = nodes['hops_to_pour'].max()
+    else:
+        nodes = hops_to_pour(nodes)
+        diameter = nodes['hops_to_pour'].max()
+    
+    if sort:
+        nodes = nodes.sort_values(['hops_to_pour'])
+    
+    result = nodes.reset_index(drop=True)
+    
+    replacement_dict = {}
+    for i in range(len(nodes)):
+        previous_id = result.at[i, 'id']
+        replacement_dict[previous_id] = i 
+    
+    result = result.replace({'next': replacement_dict}) 
+    result = result.replace({'id': replacement_dict}) 
+    
+    return result
 
 def slice_linestrings(base_gdf, cutter_gdf):
     """
