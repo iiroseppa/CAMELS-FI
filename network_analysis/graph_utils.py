@@ -684,6 +684,76 @@ def shreve(nodes):
     nodes['shreve'] = nodes.index.map(shreve)
     return nodes   
 
+def strahler(nodes):
+    """ Calculates the shreve river order for the given preprocessed dataframe
+    Input: Preprocessed dataframe
+    Output: Returns same dataframe but with additional column containing the shreve order
+    """
+    nodes = nodes.copy()
+    
+    if "source" in nodes.columns:
+        pass
+    else:
+        nodes = is_source(nodes)
+
+    if 'hops_to_pour' in nodes.columns:
+        pass   
+    else:
+        nodes = d_to_pour(nodes)
+
+    if 'in_connect' in nodes.columns:
+        pass
+    else:
+        nodes = in_connectedness(nodes)
+        
+    diameter = nodes['hops_to_pour'].max()
+    source_ids = list(nodes[nodes['source']].index)
+
+    nodes.loc[source_ids, 'strahler'] = 1
+
+    previous_ids = source_ids
+    """
+    Counting backwards from the farthest source. The sources themselves are skipped, because they are a special case.
+    Moving this way ensures that encountered intersections have the upstream completely defined.
+    """
+    for i in range(diameter -1, -1, -1):
+        current_nodes = nodes[nodes["hops_to_pour"] == i]
+        # The current nodes are divided into two groups based on inconnectedness
+        junctions = current_nodes[current_nodes["in_connect"] >= 2]
+        straights = current_nodes[current_nodes["in_connect"] == 1]
+
+        for j, row in junctions.iterrows():
+            row_id = row.id
+            previous = nodes[nodes['next'] == row_id]
+            
+            # The previous nodes have the same value, so the value is incremented
+            if previous.strahler.duplicated(keep=False).sum() >= 2:
+                # Some additional checks are required in case there are more than two previous nodes
+                largest_duplicate = previous[previous.strahler.duplicated()].strahler.max()
+                largest = previous.strahler.max()
+                if largest == largest_duplicate:
+                    
+                    nodes.at[row_id, 'strahler'] = largest + 1
+                    
+                else:
+                    nodes.at[row_id, 'strahler'] = largest
+
+            else:
+                largest = previous.strahler.max()
+                nodes.at[row_id, 'strahler'] = largest
+            
+        for j, row in straights.iterrows():
+            row_id = row.id
+            previous = nodes[nodes['next'] == row_id]
+            nodes.at[row_id, 'strahler'] = previous.strahler.max()
+
+    nodes["strahler"] = nodes["strahler"].astype(int)
+        
+    
+    
+    
+    return nodes
+
 def slice_linestrings(base_gdf, cutter_gdf):
     """
     Slices the LineString geometries in base_gdf at the intersection points with the geometries in cutter_gdf.
