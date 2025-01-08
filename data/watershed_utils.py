@@ -122,7 +122,7 @@ def breach_catchment(catchments, root, src_vrt_path, buffer_d):
             #subprocess.run(["gdalbuildvrt", "-input_file_list", dst_txt_path, dst_vrt_path])
             return dst_txt_path
 
-def process_catchments(operation_name, catchments, root, source_txt_path, buffer_d, network_path=None, raise_path=None):
+def process_catchments(operation_name, catchments, root, source_txt_path, buffer_d, network_path=None, raise_path=None, verbose=False):
     """ Convenience wrapper for processing the catchment tiffs
     """
     sources = pd.read_csv(source_txt_path, header=None, names=["path"])
@@ -143,7 +143,7 @@ def process_catchments(operation_name, catchments, root, source_txt_path, buffer
     #dst_vrt_path = os.path.join(root, f"{operation_name}_10m.vrt")
     
     wbt = WhiteboxTools()
-    wbt.set_verbose_mode(False)
+    wbt.set_verbose_mode(verbose)
     
     dst_file_paths = []
     # a separate counter is needed
