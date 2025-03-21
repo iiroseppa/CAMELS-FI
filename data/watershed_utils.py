@@ -277,7 +277,7 @@ def main_parallel_processing(args):
 
     return dst_path
 
-def paralell_process_catchments(operation_name, catchments, root, source_txt_path, buffer_d, network_path=None, raise_path=None, verbose=False):
+def paralell_process_catchments(operation_name, catchments, root, source_txt_path, buffer_d, network_path=None, raise_path=None, verbose=False, n_cpu=os.cpu_count()):
     """ Convenience wrapper for processing the catchment tiffs, paralellized version
     """
     
@@ -305,7 +305,7 @@ def paralell_process_catchments(operation_name, catchments, root, source_txt_pat
                 raise_path, catchments.crs, src_path,
                 dst_dir))
     
-    dst_file_paths = progress_map(main_parallel_processing, args_list)
+    dst_file_paths = progress_map(main_parallel_processing, args_list, n_cpu=n_cpu)
 
     # Writing the files to a file list
     with open(dst_txt_path, 'w') as fp:
