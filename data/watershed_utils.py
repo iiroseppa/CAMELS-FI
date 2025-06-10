@@ -9,29 +9,34 @@ from rasterio.windows import from_bounds
 
 import numpy as np
 
-try:# yoga
+try:
     from whitebox.WBT.whitebox_tools import WhiteboxTools
-except:# fossa
+except:
     from whitebox.whitebox_tools import WhiteboxTools
 
 import os
-
 from shutil import copyfile
-
 from tqdm.notebook import tqdm
-
 from parallelbar import progress_map
 
 def breach_catchment(catchments, root, src_vrt_path, buffer_d):
     """
-    Conveniece wrapper for automating breaching
+    Convenience wrapper for automating breaching.
+
+    Parameters:
+    catchments (GeoDataFrame): The GeoDataFrame containing catchment geometries.
+    root (str): The root directory for DEM data.
+    src_vrt_path (str): Path to the source VRT file.
+    buffer_d (int): The buffer distance to apply.
+
+    Returns:
+    str: The path to the text file containing the processed file paths.
     """
     operation_name = "breach"
     
     tmp_dir = "/tmp/stream_processing"
     if not os.path.isdir(tmp_dir):
             os.mkdir(tmp_dir)
-    
     
     src_tmp_path = os.path.join(tmp_dir, "source.tif") 
     dst_dir = os.path.join(root, operation_name) 
@@ -40,20 +45,14 @@ def breach_catchment(catchments, root, src_vrt_path, buffer_d):
     
     # Text file that contains path of all the processed files
     dst_txt_path = os.path.join(root, f"{operation_name}_10m.txt")
-    # The resulting vrt_path
-    #dst_vrt_path = os.path.join(root, f"{operation_name}_10m.vrt")
-    
-    
     
     wbt = WhiteboxTools()
     wbt.set_verbose_mode(False)
-    
     
     dst_file_paths = []
     
     with tqdm(catchments.iterrows(), total=len(catchments)) as pbar:
         for i, catchment in pbar:
-                
             pbar.set_description(f" Doing {operation_name} for catchment {i}")
             
             # Changing the catchment from series to dataframe 
@@ -75,7 +74,7 @@ def breach_catchment(catchments, root, src_vrt_path, buffer_d):
             maxx = bounds.at[0, 'maxx']
             maxy = bounds.at[0, 'maxy']
     
-            """ reading only the portion of the raster that falls on the buffered area.
+            """ Reading only the portion of the raster that falls on the buffered area.
             The catchment and dataset need to be in the same projection.
             If the buffer falls outside of the bounds of vrt, the portion is filled with nodata
             """
@@ -85,15 +84,10 @@ def breach_catchment(catchments, root, src_vrt_path, buffer_d):
                     1, window=from_bounds(minx, miny, maxx, maxy, src.transform),
                     boundless=True, fill_value=profile['nodata'])
                 
-                #mask = src.read_masks(window=from_bounds(minx, miny, maxx, maxy, src.transform))
-            """For some reason, the dataset contains completely empty DEMs (for example X5142).
-            These are skipped and not added anywhere. The indexes are then added to a list and removed from catchments
-            """
             unique = np.unique(values)
             if unique.max() < 0:
                 continue
             
-            # Updating the profile and recalculating the transform to match the values
             profile['transform'] = rasterio.transform.from_bounds(minx, miny, maxx, maxy, values.shape[1], values.shape[0])
             profile['width'] = values.shape[1]
             profile['height'] = values.shape[0]
@@ -104,15 +98,9 @@ def breach_catchment(catchments, root, src_vrt_path, buffer_d):
                 dst.write(values, 1)
 
             dst_path = os.path.join(dst_dir, f"{operation_name}_{i}.tif")
-
             # The actual processing, depending on the processing option
-            
             status = wbt.breach_depressions_least_cost(src_tmp_path, dst_path, dist=20, max_cost=100)
-
-            # The raster is not clipped so that edge effects can be avoided in future prosessing round
-            # clipping the raster and moving it to the correct location
             
-    
             dst_file_paths.append(dst_path)
 
             # Writing the files to a file list
@@ -120,11 +108,18 @@ def breach_catchment(catchments, root, src_vrt_path, buffer_d):
                 for name in dst_file_paths:
                     fp.write(f"{name}\n")
             
-            # Creating the vrt
-            #subprocess.run(["gdalbuildvrt", "-input_file_list", dst_txt_path, dst_vrt_path])
             return dst_txt_path
 
 def main_parallel_processing(args):
+     """
+    Main function for parallel processing of catchments.
+
+    Parameters:
+    args (tuple): A tuple containing the arguments for processing.
+
+    Returns:
+    str: The path to the processed file.
+    """
     operation_name, k, catchment, source_txt_path, buffer_d, network_path, raise_path, crs, src_path, dst_dir = args
 
     wbt = WhiteboxTools()
@@ -149,35 +144,6 @@ def main_parallel_processing(args):
     maxx = bounds.at[0, 'maxx']
     maxy = bounds.at[0, 'maxy']
 
-    
-    # If the buffer falls outside of the bounds of vrt, the portion is filled with nodata
-    """
-    with rasterio.open(src_path) as src:
-        profile = src.profile
-        values = src.read(
-            1, window=from_bounds(minx, miny, maxx, maxy, src.transform),
-            boundless=True, fill_value=profile['nodata'])
-    """    
-        #mask = src.read_masks(window=from_bounds(minx, miny, maxx, maxy, src.transform))
-    """For some reason, the dataset contains completely empty DEMs (for example X5142).
-    These are skipped and not added anywhere. The indexes are then added to a list and removed from catchments
-    """
-    """
-    unique = np.unique(values)
-    if unique.max() < 0:
-        continue
-    
-    # Updating the profile and recalculating the transform to match the values
-    profile['transform'] = rasterio.transform.from_bounds(
-        minx, miny, maxx, maxy, values.shape[1], values.shape[0])
-    profile['width'] = values.shape[1]
-    profile['height'] = values.shape[0]
-    profile['driver'] = 'GTiff'
-    
-    # Saving the opened raster as a temporary file
-    with rasterio.open(src_tmp_path, 'w', **profile) as dst:
-        dst.write(values, 1)
-    """
     dst_path = os.path.join(dst_dir, f"{operation_name}_{k}.tif")
     #dst_file_paths.append(dst_path)
 
@@ -214,6 +180,7 @@ def main_parallel_processing(args):
 
             with rasterio.open(dst_path, 'w', **profile) as dst:
                     dst.write(values, 1)
+                
     elif operation_name == "dig_intersection":
         """ Walls that are raised around the catchments need to be breached on the pour point of the catchment
         """
@@ -230,9 +197,10 @@ def main_parallel_processing(args):
 
         if len(intersection) == 0:
             print(f"{operation_name} failed for catchment {k} because there were no intersections")
-            return boundary, network, intersection, catchment # for debugging
-            #continue
+            return boundary, network, intersection, catchment
+       
         intersection['geometry'] = intersection.buffer(10, cap_style='square')
+        
         with rasterio.open(src_path) as src:
             values = src.read(1)
             profile = src.profile
@@ -248,7 +216,6 @@ def main_parallel_processing(args):
         
     elif operation_name == "breach":
         status = wbt.breach_depressions_least_cost(src_path, dst_path, dist=10, max_cost=50)
-
         
     elif operation_name == "d8_pointer":
         status = wbt.d8_pointer(src_path, dst_path)
@@ -261,7 +228,7 @@ def main_parallel_processing(args):
             values = src.read(1)
             profile = src.profile
             mask = src.read_masks(1)
-        # value clipping, 40_000 is required for one of pesiös locations. 55_000 is closer to SYKES flow channel estimate
+        
         values = np.where(values > 40_000, 1, 0).astype('uint8')
         profile['dtype'] = 'uint8'
         # update nodata to 255
@@ -271,30 +238,39 @@ def main_parallel_processing(args):
         with rasterio.open(dst_path, 'w', **profile) as dst:
                 dst.write(values, 1)
     
-
     else:
         raise Exception(f"unregocnized operation name {operation_name}")
 
     return dst_path
 
 def paralell_process_catchments(operation_name, catchments, root, source_txt_path, buffer_d, network_path=None, raise_path=None, verbose=False, n_cpu=os.cpu_count()):
-    """ Convenience wrapper for processing the catchment tiffs, paralellized version
+    """
+    Convenience wrapper for processing the catchment tiffs in parallel.
+
+    Parameters:
+    operation_name (str): The name of the operation to perform.
+    catchments (GeoDataFrame): The GeoDataFrame containing catchment geometries.
+    root (str): The root directory for DEM data.
+    source_txt_path (str): Path to the source text file.
+    buffer_d (int): The buffer distance to apply.
+    network_path (str, optional): Path to the network data.
+    raise_path (str, optional): Path to the raise vector data.
+    verbose (bool, optional): Whether to enable verbose mode.
+    n_cpu (int, optional): Number of CPUs to use for parallel processing.
+
+    Returns:
+    str: The path to the text file containing the processed file paths.
     """
     
     sources = pd.read_csv(source_txt_path, header=None, names=["path"])
     
-    #src_tmp_path = os.path.join(tmp_dir, "source.tif") 
     dst_dir = os.path.join(root, operation_name) 
     if not os.path.isdir(dst_dir):
         os.makedirs(dst_dir)
     
     # Text file that contains path of all the processed files
     dst_txt_path = os.path.join(root, f"{operation_name}_10m.txt")
-    # The resulting vrt_path
-    #dst_vrt_path = os.path.join(root, f"{operation_name}_10m.vrt")
-    
-    
-    
+      
     # Generating argument list
     args_list = []
     for k, catchment in catchments.iterrows():
@@ -315,31 +291,37 @@ def paralell_process_catchments(operation_name, catchments, root, source_txt_pat
     return dst_txt_path
         
 def process_catchments(operation_name, catchments, root, source_txt_path, buffer_d, network_path=None, raise_path=None, verbose=False):
-    """ Convenience wrapper for processing the catchment tiffs
+    """     
+    Convenience wrapper for processing the catchment tiffs.
+
+    Parameters:
+    operation_name (str): The name of the operation to perform.
+    catchments (GeoDataFrame): The GeoDataFrame containing catchment geometries.
+    root (str): The root directory for DEM data.
+    source_txt_path (str): Path to the source text file.
+    buffer_d (int): The buffer distance to apply.
+    network_path (str, optional): Path to the network data.
+    raise_path (str, optional): Path to the raise vector data.
+    verbose (bool, optional): Whether to enable verbose mode.
+
+    Returns:
+    str: The path to the text file containing the processed file paths.
     """
     sources = pd.read_csv(source_txt_path, header=None, names=["path"])
-    """
-    tmp_dir = "/tmp/stream_processing"
-    if not os.path.isdir(tmp_dir):
-            os.mkdir(tmp_dir)
-    """
-    
-    #src_tmp_path = os.path.join(tmp_dir, "source.tif") 
+ 
     dst_dir = os.path.join(root, operation_name) 
     if not os.path.isdir(dst_dir):
         os.makedirs(dst_dir)
     
     # Text file that contains path of all the processed files
     dst_txt_path = os.path.join(root, f"{operation_name}_10m.txt")
-    # The resulting vrt_path
-    #dst_vrt_path = os.path.join(root, f"{operation_name}_10m.vrt")
-    
+
     wbt = WhiteboxTools()
     wbt.set_verbose_mode(verbose)
     
     dst_file_paths = []
-    # a separate counter is needed
-    k = 0
+    k = 0 #counter
+    
     with tqdm(catchments.iterrows(), total=len(catchments)) as pbar:
         for j, catchment in pbar:
             pbar.set_description(f" Doing {operation_name} for catchment {j}")
@@ -366,33 +348,6 @@ def process_catchments(operation_name, catchments, root, source_txt_path, buffer
             # Fetching the filename
             src_path = sources.at[k, 'path']
             # If the buffer falls outside of the bounds of vrt, the portion is filled with nodata
-            """
-            with rasterio.open(src_path) as src:
-                profile = src.profile
-                values = src.read(
-                    1, window=from_bounds(minx, miny, maxx, maxy, src.transform),
-                    boundless=True, fill_value=profile['nodata'])
-            """    
-                #mask = src.read_masks(window=from_bounds(minx, miny, maxx, maxy, src.transform))
-            """For some reason, the dataset contains completely empty DEMs (for example X5142).
-            These are skipped and not added anywhere. The indexes are then added to a list and removed from catchments
-            """
-            """
-            unique = np.unique(values)
-            if unique.max() < 0:
-                continue
-            
-            # Updating the profile and recalculating the transform to match the values
-            profile['transform'] = rasterio.transform.from_bounds(
-                minx, miny, maxx, maxy, values.shape[1], values.shape[0])
-            profile['width'] = values.shape[1]
-            profile['height'] = values.shape[0]
-            profile['driver'] = 'GTiff'
-            
-            # Saving the opened raster as a temporary file
-            with rasterio.open(src_tmp_path, 'w', **profile) as dst:
-                dst.write(values, 1)
-            """
             dst_path = os.path.join(dst_dir, f"{operation_name}_{j}.tif")
             dst_file_paths.append(dst_path)
 
@@ -429,6 +384,7 @@ def process_catchments(operation_name, catchments, root, source_txt_path, buffer
     
                     with rasterio.open(dst_path, 'w', **profile) as dst:
                             dst.write(values, 1)
+                        
             elif operation_name == "dig_intersection":
                 """ Walls that are raised around the catchments need to be breached on the pour point of the catchment
                 """
@@ -463,7 +419,6 @@ def process_catchments(operation_name, catchments, root, source_txt_path, buffer
                 
             elif operation_name == "breach":
                 status = wbt.breach_depressions_least_cost(src_path, dst_path, dist=10, max_cost=50)
-
                 
             elif operation_name == "d8_pointer":
                 status = wbt.d8_pointer(src_path, dst_path)
@@ -476,7 +431,7 @@ def process_catchments(operation_name, catchments, root, source_txt_path, buffer
                     values = src.read(1)
                     profile = src.profile
                     mask = src.read_masks(1)
-                # value clipping, 40_000 is required for one of pesiös locations. 55_000 is closer to SYKES flow channel estimate
+
                 values = np.where(values > 40_000, 1, 0).astype('uint8')
                 profile['dtype'] = 'uint8'
                 # update nodata to 255
@@ -489,47 +444,31 @@ def process_catchments(operation_name, catchments, root, source_txt_path, buffer
 
             else:
                 raise Exception(f"unregocnized operation name {operation_name}")
-
-            # The raster is not clipped so that edge effects can be avoided in future prosessing round
-            # clipping the raster and moving it to the correct location
-            """
-            with rasterio.open(dst_path) as src:
-                profile = src.profile
-                values = src.read(
-                    1, window=from_bounds(
-                        catchment_minx, catchment_miny, catchment_maxx,
-                        catchment_maxy, src.transform),
-                    boundless=True, fill_value=profile['nodata'])
-            
-            profile['transform'] = rasterio.transform.from_bounds(
-                catchment_minx, catchment_miny, catchment_maxx,
-                catchment_maxy, values.shape[1], values.shape[0])
-            profile['width'] = values.shape[1]
-            profile['height'] = values.shape[0]
-            """
     
             k +=1
 
-            
     # Writing the files to a file list
     with open(dst_txt_path, 'w') as fp:
         for name in dst_file_paths:
             fp.write(f"{name}\n")
     
-    # Creating the vrt
-    #subprocess.run(["gdalbuildvrt", "-input_file_list", dst_txt_path, dst_vrt_path])
     return dst_txt_path
 
 def burn_river_graph(catchments, river_network_path, root, src_vrt_path, buffer_d):
     """
-    Artificially deepen the river channels in a given river network to dem
+    Artificially deepen the river channels in a given river network to DEM
+    
+    Parameters:
+    catchments (GeoDataFrame): The GeoDataFrame containing catchment geometries.
+    river_network_path (str): Path to the river network data.
+    root (str): The root directory for DEM data.
+    src_vrt_path (str): Path to the source VRT file.
+    buffer_d (int): The buffer distance to apply.
+
+    Returns:
+    str: The path to the text file containing the processed file paths.
     """
     operation_name = "burn"
-    """
-    tmp_dir = "/tmp/stream_processing"
-    if not os.path.isdir(tmp_dir):
-            os.mkdir(tmp_dir)
-    """
     
     #src_tmp_path = os.path.join(tmp_dir, "source.tif") 
     dst_dir = os.path.join(root, operation_name) 
@@ -538,20 +477,14 @@ def burn_river_graph(catchments, river_network_path, root, src_vrt_path, buffer_
     
     # Text file that contains path of all the processed files
     dst_txt_path = os.path.join(root, f"{operation_name}_10m.txt")
-    # The resulting vrt_path
-    #dst_vrt_path = os.path.join(root, f"{operation_name}_10m.vrt")
-    
-    
     
     wbt = WhiteboxTools()
     wbt.set_verbose_mode(False)
     
-    
     dst_file_paths = []
     
     with tqdm(catchments.iterrows(), total=len(catchments)) as pbar:
-        for i, catchment in pbar:
-                
+        for i, catchment in pbar:         
             pbar.set_description(f" Doing {operation_name} for catchment {i}")
             
             # Changing the catchment from series to dataframe 
@@ -573,7 +506,7 @@ def burn_river_graph(catchments, river_network_path, root, src_vrt_path, buffer_
             maxx = bounds.at[0, 'maxx']
             maxy = bounds.at[0, 'maxy']
 
-            # Reading the portion of teh river network that is needed
+            # Reading the portion of the river network that is needed
             network = geopd.read_file(river_network_path, bbox=(minx, miny, maxx, maxy))
             
             """ reading only the portion of the raster that falls on the buffered area.
@@ -585,13 +518,9 @@ def burn_river_graph(catchments, river_network_path, root, src_vrt_path, buffer_
                 values = src.read(
                     1, window=from_bounds(minx, miny, maxx, maxy, src.transform),
                     boundless=True, fill_value=profile['nodata'])
-                
-                #mask = src.read_masks(window=from_bounds(minx, miny, maxx, maxy, src.transform))
-            """For some reason, the dataset contains completely empty DEMs (for example X5142).
-            These are skipped and not added anywhere. The indexes are then added to a list and removed from catchments
-            """
+
             unique = np.unique(values)
-            if unique.max() < 0: # TODO check if nodata value is the only value
+            if unique.max() < 0: 
                 continue
             
             # Updating the profile and recalculating the transform to match the values
@@ -613,7 +542,6 @@ def burn_river_graph(catchments, river_network_path, root, src_vrt_path, buffer_
             with rasterio.open(dst_path, 'w', **profile) as dst:
                 dst.write(values, 1)
 
-            # The raster is not clipped so that edge effects can be avoided in future prosessing round
             dst_file_paths.append(dst_path)
 
     # Writing the files to a file list
@@ -621,6 +549,4 @@ def burn_river_graph(catchments, river_network_path, root, src_vrt_path, buffer_
         for name in dst_file_paths:
             fp.write(f"{name}\n")
     
-    # Creating the vrt
-    #subprocess.run(["gdalbuildvrt", "-input_file_list", dst_txt_path, dst_vrt_path])
     return dst_txt_path
