@@ -14,19 +14,19 @@ from dask.distributed import Client, print #Dask print enables seeing worker pri
 from dask import delayed
 from dask import compute
 
+# This script calculates the daily mean climate variables for catchments using Dask for parallel processing.
+# It reads climate data from NetCDF files, clips the data to the catchment geometries, and calculates the mean values for each catchment.
+# The results are saved as CSV files.
+
 # Derived from https://github.com/csc-training/geocomputing/blob/master/python/puhti/06_parallel_dask/multi_node/dask_multinode.py
 
 # CSC project name for SLURMCluster, given in the command line
 project_name = "project_2013241"
 
 root = f"/scratch/{project_name}/csc_weather/"
-
 dst_root = os.path.join(root, "raw_time_series")
-
 src_root = os.path.join(root, "fmi_grid")
-
 watershed_path =  os.path.join(root, "CAMELS-FI_catchments.gpkg")
-
 
 def createSLURMCluster():
     # The number of SLURM jobs
@@ -37,7 +37,6 @@ def createSLURMCluster():
     
     # Number of cores per SLURM job. 
     # In bigger analysis this has to fit to one HPC node, so in Puhti max 40 cores.  
-
     no_of_cores = 1
     
     # Here no_of_cores is also used as number of workers (processes) per SLURM job, but number of workers could also be smaller, but not bigger.
@@ -76,15 +75,15 @@ def mean_weather(args):
     weather.index.name = 'date'
 
     with rioxr.open_rasterio(src_path, mask_and_scale=True) as data_array:
-        # force load all data to memory, important for the supercomputer
+        # Force load all data to memory, important for the supercomputer
         data_array = data_array.load()
-        # iterating over the days in the file 
+        
+        # Iterating over the days in the file 
         for time_step in data_array.Time:
             day = time_step.item()
             one_day_data = data_array.sel({'Time':day})
 
             row = []
-            # looks a bit unpythonic but DataFrame.iterrows returns series, not dataframes and it's a hassle to change back
             for i in range(len(watersheds)): 
                 watershed = watersheds.iloc[[i]]
                 place_id = watershed.Paikka_Id[i]
@@ -93,17 +92,17 @@ def mean_weather(args):
                 clipped = one_day_data.rio.clip(watershed.geometry.values, crs=watershed.crs)
                 average = clipped.mean().item()
                 average = round(average, 1)
+                
                 # Failsafe for catchments smaller than the pixel size
                 if average is np.nan:
                     clipped = data_array.rio.clip(watershed.geometry.values, crs=watershed.crs, all_touched=True)
                     average = clipped.mean().item()
 
                 row.append(average)
+                
             weather.loc[str(day)] = row
 
     weather.to_csv(dst_path)
-    # only for debuggin purposes
-    #return weather
 
 def main():
     createSLURMCluster()
@@ -111,11 +110,9 @@ def main():
     ## This list hosts the delayed functions which are then ran with compute()
     list_of_delayed_functions = []
 
-
     dirs = ['RRday', 'ET0_FAO', 'Tday',
         'Tgmin', 'Tmin', 'Tmax',
         'Rh', 'Globrad', 'Snow']
-
     
     attributes = {'Rh' : 'humidity','ET0_FAO': 'pet', 'Tday': 'temperature_mean',
               'Tmin': 'temperature_min', 'Tgmin': 'temperature_gmin', 'Tmax': 'temperature_max',
@@ -127,6 +124,7 @@ def main():
         dst_dir =  os.path.join(dst_root, attributes[current_dir])
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
+            
         for year in range(years[0], years[1] + 1):
             # tgmin is not available for 2023
             if year == 2023 and current_dir == 'Tgmin':
@@ -146,7 +144,6 @@ def main():
             src_path = os.path.join(src_root, current_dir, src_file_name)
             
             if not os.path.exists(src_path):
-                #print(f"path {src_path} doesn't exists")
                 with open(os.path.join(dst_root, "error_log.txt"), 'a') as error_log:
                     error_log.write(f"Path does not exist:{src_path}\n")
                 continue
@@ -154,12 +151,11 @@ def main():
             dst_file_name = f"{attributes[current_dir]}_{year}.csv"
             dst_path = os.path.join(dst_dir, dst_file_name)
             arg = ((src_path,  dst_path, watershed_path))
-            ### add delayed processImage function for one image to a list instead of running the process directly
-            # Only running for the files that do not exist
+
             if not os.path.exists(dst_path):
                 list_of_delayed_functions.append((delayed(mean_weather)(arg)))
 
-    ## After constructing the Dask graph of delayed functions, run them with the resources available
+    # After constructing the Dask graph of delayed functions, run them with the resources available
     compute(list_of_delayed_functions)
     
 if __name__ == "__main__":
