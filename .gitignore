@@ -1,5 +1,8 @@
 # ignore jupyter notebook checkpoints
 **.ipynb_checkpoints/
 
-# Excluding eggs
+# ignore eggs (user can run pip install -e .) to create those
 CAMELS_FI.egg-info
+
+# Exclude cached bytecodes, since those are not meant for sharing
+**__pychache__/
