@@ -1,0 +1,5 @@
+# ignore jupyter notebook checkpoints
+**.ipynb_checkpoints/
+
+# Excluding eggs
+CAMELS_FI.egg-info
