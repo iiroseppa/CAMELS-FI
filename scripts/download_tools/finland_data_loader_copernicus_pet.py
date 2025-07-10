@@ -7,11 +7,8 @@ c = cdsapi.Client()
 first_year = 1961
 last_year = 2023
 
-dataset = "reanalysis-era5-single-levels"
-variables = ["snow_evaporation",
-        "potential_evaporation"]
-
-fmi_months = [4, 5, 6, 7, 8, 9]
+dataset = "reanalysis-era5-land"
+variables = ["potential_evaporation"]
 
 for year in range(first_year, last_year + 1):
     for month in range(1, 13):

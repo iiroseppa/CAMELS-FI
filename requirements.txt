@@ -1,0 +1,16 @@
+# Required packages, these are the versions that were used, other versions have not been tested. 
+#Newer packages will probably work, unless breaking changes have been introduced 
+geopandas==1.0.1
+rasterio==1.4.3
+matplotlib==3.10
+jupyterlab==4.3.5
+whitebox==2.3.6
+requests==2.32.3
+xarray==2025.1.2
+rioxarray==0.18.2
+
+cdsapi
+pyarrow
+tqdm
+
+

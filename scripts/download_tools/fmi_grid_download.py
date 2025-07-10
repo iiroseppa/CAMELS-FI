@@ -1,4 +1,4 @@
-
+# Downloads FMI's gridded data https://en.ilmatieteenlaitos.fi/gridded-observations-on-aws-s3
 
 import requests
 import os

@@ -14,7 +14,7 @@ from dask.distributed import Client, print #Dask print enables seeing worker pri
 from dask import delayed
 from dask import compute
 
-# This script calculates the daily mean climate variables for catchments using Dask for parallel processing.
+# This script calculates the daily mean climate variables for catchments using Dask for parallel processing (This script was run in a supercomputer, which is why dask isn't included in requiurements).
 # It reads climate data from NetCDF files, clips the data to the catchment geometries, and calculates the mean values for each catchment.
 # The results are saved as CSV files.
 

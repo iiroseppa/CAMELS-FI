@@ -111,17 +111,15 @@ def breach_catchment(catchments, root, src_vrt_path, buffer_d):
             return dst_txt_path
 
 def main_parallel_processing(args):
-     """
+    """
     Main function for parallel processing of catchments.
-
     Parameters:
     args (tuple): A tuple containing the arguments for processing.
-
+    
     Returns:
     str: The path to the processed file.
     """
     operation_name, k, catchment, source_txt_path, buffer_d, network_path, raise_path, crs, src_path, dst_dir = args
-
     wbt = WhiteboxTools()
     wbt.set_verbose_mode(False)
     
@@ -129,7 +127,6 @@ def main_parallel_processing(args):
     catchment = geopd.GeoDataFrame(
             dict(zip(list(catchment.index), list(catchment.values))),
             crs=crs, geometry='geometry', index=[0])
-
     catchment_minx = catchment.bounds.at[0, 'minx']
     catchment_miny = catchment.bounds.at[0, 'miny']
     catchment_maxx = catchment.bounds.at[0, 'maxx']

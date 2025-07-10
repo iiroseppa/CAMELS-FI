@@ -6,6 +6,6 @@ from .watershed_utils import (
     breach_catchment,
     main_parallel_processing,
     paralell_process_catchments,
-    process_individual_catchments,
+    process_catchments,
     burn_river_graph
 )
