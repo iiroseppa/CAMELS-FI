@@ -5,4 +5,4 @@
 CAMELS_FI.egg-info
 
 # Exclude cached bytecodes, since those are not meant for sharing
-**__pychache__/
+**__pycache__/
