@@ -6,3 +6,9 @@ CAMELS_FI.egg-info
 
 # Exclude cached bytecodes, since those are not meant for sharing
 **__pycache__/
+
+# Data is too large for git and available in zenodo https://doi.org/10.5281/zenodo.15853357
+data/
+
+# Support document is downloaded with data
+supporting-documents/
