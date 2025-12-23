@@ -10,3 +10,5 @@ CAMELS-FI is a large sample hydrometeorological dataset, for Finland, containing
  
 Data is available from [Zenodo](https://doi.org/10.5281/zenodo.15853357)
 
+Dataset publication describing the dataset and its development is available as a [preprint](https://doi.org/10.5194/essd-2025-578). The article is under review to Earth System Science Data
+
